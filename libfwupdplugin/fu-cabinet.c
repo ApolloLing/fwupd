@@ -453,6 +453,31 @@ fu_cabinet_set_container_checksum_cb (XbBuilderFixup *builder_fixup,
 	return TRUE;
 }
 
+static gboolean
+fu_cabinet_set_lowercase_checksum_cb(XbBuilderFixup *builder_fixup,
+				     XbBuilderNode *bn,
+				     gpointer user_data,
+				     GError **error)
+{
+	g_autoptr(XbBuilderNode) csum = NULL;
+
+	/* verify it exists */
+	if (g_strcmp0(xb_builder_node_get_element(bn), "artifact") == 0)
+		csum = _xb_builder_node_get_child_by_element_attr(bn, "checksum", "type", "sha256");
+	else if (g_strcmp0(xb_builder_node_get_element(bn), "release") == 0)
+		csum =
+		    _xb_builder_node_get_child_by_element_attr(bn, "checksum", "target", "content");
+	if (csum != NULL) {
+		const gchar *tmp = xb_builder_node_get_text(csum);
+		if (tmp != NULL) {
+			g_autofree gchar *lowercase = g_ascii_strdown(tmp, -1);
+			xb_builder_node_set_text(csum, lowercase, -1);
+		}
+	}
+
+	return TRUE;
+}
+
 /* adds each GCabFile to the silo */
 static gboolean
 fu_cabinet_build_silo_file (FuCabinet *self,
@@ -589,6 +614,7 @@ fu_cabinet_build_silo (FuCabinet *self, GBytes *data, GError **error)
 	GPtrArray *folders;
 	g_autoptr(XbBuilderFixup) fixup1 = NULL;
 	g_autoptr(XbBuilderFixup) fixup2 = NULL;
+	g_autoptr(XbBuilderFixup) fixup3 = NULL;
 
 	/* verbose profiling */
 	if (g_getenv ("FWUPD_XMLB_VERBOSE") != NULL) {
@@ -626,6 +652,12 @@ fu_cabinet_build_silo (FuCabinet *self, GBytes *data, GError **error)
 				       fu_cabinet_set_container_checksum_cb,
 				       self, NULL);
 	xb_builder_add_fixup (self->builder, fixup2);
+
+	fixup3 = xb_builder_fixup_new("LowerCaseCheckSum",
+				      fu_cabinet_set_lowercase_checksum_cb,
+				      self,
+				      NULL);
+	xb_builder_add_fixup(self->builder, fixup3);
 
 	/* did we get any valid files */
 	self->silo = xb_builder_compile (self->builder,
